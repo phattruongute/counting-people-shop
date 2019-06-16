@@ -9,6 +9,7 @@ import sys
 import tensorflow as tf
 import cv2
 import argparse
+#Needed library
 sys.path.append("models/build/lib/object_detection")
 sys.path.append("models/build/lib/")
 
@@ -21,7 +22,7 @@ def main(input_vid_name,output_vid_name,model,label_map):
     output = os.path.join('demo/output',output_vid_name)  
     fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
     out = cv2.VideoWriter(output, fourcc, 20.0, (1920, 1080))
-    #cap = cv2.VideoCapture("train_video/trainvideo.mp4")
+
     # folder of model.
     MODEL_NAME = model
 
@@ -86,10 +87,13 @@ def main(input_vid_name,output_vid_name,model,label_map):
                         (true_boxes, true_scores, true_classes) = sess.run(
                             [boxes, scores, classes],
                             feed_dict={image_tensor: image_np_expanded})
+                        #All predicted boxes now is in range [0,1] --> scale it to the original size
                         true_boxes = true_boxes*np.array([img_shape[0],img_shape[1],img_shape[0],img_shape[1]])
                         true_boxes = true_boxes.astype(int)
                         num_box = true_boxes.shape[0]
-                        #Tracking using IOU between box in previous frame, and counting
+
+                        #Tracking using IOU between box in previous and current frame, and then counting 
+                        # if previous box is inside door and current corresponding box is outside door
                         frame_box_id = np.zeros((num_box),dtype = int)
                         track_stt = np.zeros((num_box),dtype = int)
                         in_out = np.zeros((num_box),dtype = int)
@@ -97,31 +101,31 @@ def main(input_vid_name,output_vid_name,model,label_map):
                             for i,box in enumerate(true_boxes):
                                 frame_box_id[i] = next_id
                                 if inside_door(box) is True:
-                                    in_out[i] = 1
+                                    in_out[i] = 1 #Note that current box is inside door, so if after it outside --> +1 person
                                 next_id += 1
-
                         else:#other frames
                             for i,box in enumerate(true_boxes):#box in current frame
-                                if len(prev_boxes) != 0:
+                                if len(prev_boxes) != 0:# prev frame have some boxes
                                     for k,prev_box in enumerate(prev_boxes):#box in previous frame
-                                        if iou(box,prev_box) > 0.3:#threshold = 0.3 for tracking
+                                        if iou(box,prev_box) > 0.3: #threshold = 0.3 for tracking
                                             frame_box_id[i] = prev_box_ID[k]
                                             if prev_in_out[k] == 1:
-                                                if inside_door(box) is False:
-                                                    person_in += 1
+                                                if inside_door(box) is False: #check if it outside door
+                                                    person_in += 1 #Counting here
                                                 else:
                                                     in_out[i] = 1
                                             track_stt[i] = 1
-                                    if track_stt[i] == 0:    
+                                    if track_stt[i] == 0: # current box is not corresponding to any previous frame's boxs   
                                         frame_box_id[i] = next_id
                                         if inside_door(box) is True:
-                                            in_out[i] = 1
+                                            in_out[i] = 1 #Note that current box is inside door, so if after it outside --> +1 person
                                         next_id += 1
-                                else:
+                                else:# prev frame doesn't have any box
                                     frame_box_id[i] = next_id
                                     if inside_door(box) is True:
-                                        in_out[i] = 1
+                                        in_out[i] = 1 #Note that current box is inside door, so if after it outside --> +1 person
                                     next_id += 1
+                        # Saving for check in after frame
                         prev_in_out = in_out
                         prev_boxes = true_boxes
                         prev_box_ID = frame_box_id            
